@@ -8,17 +8,17 @@ import (
 	apiutil "github.com/prabhav-keyvalue/order-management-go/util/api"
 )
 
-type ISDto interface {
-	Validate(c *gin.Context)
-	validateDto(c *gin.Context) error
+type IQueryParamParser interface {
+	ParseQueryParams(c *gin.Context) error
+	Parse(c *gin.Context)
 }
 
-type Dto struct {
-	ISDto
+type QueryParamParser struct {
+	IQueryParamParser
 }
 
-func (d *Dto) Validate(c *gin.Context) {
-	err := d.validateDto(c)
+func (qp *QueryParamParser) Parse(c *gin.Context) {
+	err := qp.ParseQueryParams(c)
 
 	if err != nil {
 		apiutil.SendResponse(c, http.StatusBadRequest, &model.Response{

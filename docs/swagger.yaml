@@ -1,0 +1,215 @@
+basePath: /api/v1
+definitions:
+  dto.CreateOrderInputDto:
+    properties:
+      customerId:
+        example: 81ef33e4-280e-4371-b68a-0951c032442c
+        type: string
+      orderItems:
+        items:
+          $ref: '#/definitions/dto.OrderItem'
+        type: array
+    type: object
+  dto.OrderItem:
+    properties:
+      productId:
+        example: 81ef33e4-280e-4371-b68a-0951c032442c
+        type: string
+      quantity:
+        example: 890
+        type: integer
+    type: object
+  entity.Customer:
+    properties:
+      city:
+        example: gotham
+        type: string
+      createAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      deletedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      id:
+        example: 951c54e9-4b64-42fe-9d56-e8a9babc3f89
+        type: string
+      name:
+        example: max
+        type: string
+      phone:
+        example: "+9876467658"
+        type: string
+      profilePic:
+        example: https://picsum.photos/200
+        type: string
+      state:
+        example: kerala
+        type: string
+      street:
+        example: olive
+        type: string
+      updatedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+    type: object
+  entity.Order:
+    properties:
+      createAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      customer:
+        $ref: '#/definitions/entity.Customer'
+      customerId:
+        example: 0189fabc-1afc-49f9-bf68-95453466b50d
+        type: string
+      deletedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      id:
+        example: 951c54e9-4b64-42fe-9d56-e8a9babc3f89
+        type: string
+      orderItems:
+        items:
+          $ref: '#/definitions/entity.OrderItem'
+        type: array
+      totalPrice:
+        example: 1000
+        type: number
+      totalQuantity:
+        example: 100
+        type: integer
+      updatedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+    type: object
+  entity.OrderItem:
+    properties:
+      createAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      deletedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+      id:
+        example: 951c54e9-4b64-42fe-9d56-e8a9babc3f89
+        type: string
+      orderId:
+        example: 0189fabc-1afc-49f9-bf68-95453466b50d
+        type: string
+      price:
+        example: 9.78
+        type: number
+      productId:
+        example: 951c54e9-4b64-42fe-9d56-e8a9babc3f89
+        type: string
+      quantity:
+        example: 100
+        type: integer
+      rowTotal:
+        example: 978
+        type: number
+      updatedAt:
+        example: "2022-04-20T17:11:10+05:30"
+        type: string
+    type: object
+  model.ApiError:
+    properties:
+      code:
+        type: string
+      message:
+        type: string
+    type: object
+  model.Response:
+    properties:
+      data: {}
+      error:
+        $ref: '#/definitions/model.ApiError'
+    type: object
+host: localhost:5000
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: Order management rest api server made with Gin.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Order Management API
+  version: "1.0"
+paths:
+  /orders:
+    post:
+      consumes:
+      - application/json
+      description: Create an Order
+      operationId: create-order
+      parameters:
+      - description: CreateOrderInputDto
+        in: body
+        name: CreateOrderInputDto
+        required: true
+        schema:
+          $ref: '#/definitions/dto.CreateOrderInputDto'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Order'
+                error:
+                  allOf:
+                  - $ref: '#/definitions/model.ApiError'
+                  - properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                    type: object
+              type: object
+      summary: Create an order
+      tags:
+      - orders
+  /orders/{id}:
+    get:
+      consumes:
+      - application/json
+      description: to get a single Order ( Fetch All Information related to order)
+      operationId: get-order-by-id
+      parameters:
+      - description: order id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/model.Response'
+            - properties:
+                data:
+                  $ref: '#/definitions/entity.Order'
+                error:
+                  allOf:
+                  - $ref: '#/definitions/model.ApiError'
+                  - properties:
+                      code:
+                        type: string
+                      message:
+                        type: string
+                    type: object
+              type: object
+      summary: To get a single Order
+      tags:
+      - orders
+swagger: "2.0"

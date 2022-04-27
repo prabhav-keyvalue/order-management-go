@@ -5,9 +5,11 @@ import (
 
 	"github.com/google/uuid"
 	errorcode "github.com/prabhav-keyvalue/order-management-go/constant/error_code"
+	"github.com/prabhav-keyvalue/order-management-go/db"
 	"github.com/prabhav-keyvalue/order-management-go/dto"
 	"github.com/prabhav-keyvalue/order-management-go/entity"
 	"github.com/prabhav-keyvalue/order-management-go/logger"
+	"github.com/prabhav-keyvalue/order-management-go/model"
 	"github.com/prabhav-keyvalue/order-management-go/repository"
 	"gorm.io/gorm"
 )
@@ -16,11 +18,11 @@ type OrderService interface {
 	GetOrderById(id string) (entity.Order, error)
 	CreateOrder(createOrderInput dto.CreateOrderInputDto) (entity.Order, error)
 	EditOrder(editOrderInput dto.EditOrderInputDto) (entity.Order, error)
-	DeleteOrder(orderId string) (string, error)
+	DeleteOrder(orderId string) error
+	GetOrders(orderFilterParams dto.OrderFilterParams, paginationInput dto.PaginationParams, sortOptions dto.SortOptions) ([]entity.Order, model.PageInfo, error)
 }
 
 type OrderServiceImpl struct {
-	dB               *gorm.DB
 	orderRepository  repository.OrderRepository
 	orderItemService OrderItemService
 	productService   ProductService
@@ -28,7 +30,6 @@ type OrderServiceImpl struct {
 
 func NewOrderService(db *gorm.DB) OrderService {
 	return &OrderServiceImpl{
-		dB:               db,
 		orderRepository:  repository.NewOrderRepository(db),
 		orderItemService: NewOrderItemService(db),
 		productService:   NewProductService(db),
@@ -45,6 +46,16 @@ func (os *OrderServiceImpl) GetOrderById(id string) (order entity.Order, err err
 
 	return order, err
 
+}
+
+func (os *OrderServiceImpl) GetOrders(orderFilterParams dto.OrderFilterParams, paginationInput dto.PaginationParams, sortOptions dto.SortOptions) (orders []entity.Order, pageInfo model.PageInfo, err error) {
+	orders, pageInfo, err = os.orderRepository.GetOrders(orderFilterParams, paginationInput, sortOptions)
+
+	if err != nil {
+		logger.Error("Could not get orders")
+	}
+
+	return
 }
 
 func (os *OrderServiceImpl) CreateOrder(createOrderInput dto.CreateOrderInputDto) (order entity.Order, err error) {
@@ -88,13 +99,23 @@ func (os *OrderServiceImpl) CreateOrder(createOrderInput dto.CreateOrderInputDto
 
 	newOrder.Id = uuid.NewString()
 
-	tx := os.dB.Begin()
+	tx := db.GetTX()
+
+	defer func() {
+		if err != nil {
+			logger.Errorf("Rolling back create order | createOrderInput: %v | Error: %v", createOrderInput, err.Error())
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+	}()
+
 	order, err = os.orderRepository.CreateOrder(newOrder, tx)
 
 	if err != nil {
 		logger.Errorf("Failed to insert into order table, createOrderInput: %v | Error: %v\n", createOrderInput, err.Error())
-		tx.Rollback()
-		return order, err
+		return
 	}
 
 	logger.Infof("Created Order %v", order)
@@ -120,18 +141,17 @@ func (os *OrderServiceImpl) CreateOrder(createOrderInput dto.CreateOrderInputDto
 	orderItems, err := os.orderItemService.CreateOrderItemsWithOrder(createOrderItemsInput, tx)
 
 	if err != nil {
-		tx.Rollback()
-		return order, err
+		return
 	}
 
 	logger.Info("Created order items", orderItems)
 
-	tx.Commit()
+	order.OrderItems = orderItems
 
-	return order, err
+	return
 }
 
-func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (entity.Order, error) {
+func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (order entity.Order, err error) {
 	totalQuantity := 0
 	var newOrder entity.Order
 	for _, oi := range editOrderInput.OrderItems {
@@ -159,7 +179,7 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 	productIdPrice, err := os.productService.GetPriceByProductIds(productIds)
 
 	if err != nil {
-		return newOrder, err
+		return
 	}
 
 	productIdPriceMap := make(map[string]float64)
@@ -174,17 +194,27 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 		totalPrice += productIdPriceMap[oi.ProductId] * float64(oi.Quantity)
 	}
 
-	tx := os.dB.Begin()
+	tx := db.GetTX()
+
+	defer func() {
+		if err != nil {
+			logger.Errorf("Rolling back edit order | editOrderInput: %v | Error: %v", editOrderInput, err.Error())
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+	}()
 
 	if totalPrice != existingOrder.TotalPrice || totalQuantity != existingOrder.TotalQuantity {
 		existingOrder.TotalPrice = totalPrice
 		existingOrder.TotalQuantity = totalQuantity
-		newOrder, err = os.orderRepository.EditOrder(existingOrder, tx)
+		order, err = os.orderRepository.EditOrder(existingOrder, tx)
 
 		if err != nil {
 			logger.Errorf("Failed to update order | editOrderInput: %v | Error: %v\n", editOrderInput, err.Error())
-			tx.Rollback()
-			return newOrder, err
+
+			return
 		}
 
 	}
@@ -194,8 +224,8 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 	existingOrderItems, err := os.orderItemService.GetOrderItemsByOrderId(editOrderInput.OrderId, tx)
 
 	if err != nil {
-		tx.Rollback()
-		return newOrder, err
+
+		return
 	}
 
 	var newOrderItems []entity.OrderItem
@@ -222,8 +252,8 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 		newOrderItems, err = os.orderItemService.CreateOrderItemsWithOrder(newOrderItems, tx)
 
 		if err != nil {
-			tx.Rollback()
-			return newOrder, err
+
+			return
 		}
 
 		logger.Infof("Created new order items: %v\n", newOrderItems)
@@ -240,11 +270,11 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 	}
 
 	if len(orderItemsToBeDeleted) > 0 {
-		err := os.orderItemService.DeleteOrderItemsByIds(orderItemsToBeDeleted, tx)
+		err = os.orderItemService.DeleteOrderItemsByIds(orderItemsToBeDeleted, tx)
 
 		if err != nil {
-			tx.Rollback()
-			return newOrder, err
+
+			return
 		}
 	}
 
@@ -268,35 +298,37 @@ func (os *OrderServiceImpl) EditOrder(editOrderInput dto.EditOrderInputDto) (ent
 		err = os.orderItemService.UpdateOrderItemQuantity(oi, tx)
 
 		if err != nil {
-			tx.Rollback()
-			return newOrder, err
+
+			return
 		}
 	}
 
-	tx.Commit()
-
-	return newOrder, err
+	return
 
 }
 
-func (os *OrderServiceImpl) DeleteOrder(orderId string) (string, error) {
-	tx := os.dB.Begin()
+func (os *OrderServiceImpl) DeleteOrder(orderId string) (err error) {
+	tx := db.GetTX()
 
-	err := os.orderRepository.DeleteOrder(orderId)
+	defer func() {
+		if err != nil {
+			logger.Error("Rolling back delete order for order id: ", orderId)
+			tx.Rollback()
+			return
+		}
+
+		tx.Commit()
+	}()
+
+	err = os.orderRepository.DeleteOrder(orderId, tx)
 
 	if err != nil {
 		logger.Errorf("Delete order failed | orderId: %v | Error: %v", orderId, err.Error())
-		tx.Rollback()
-		return orderId, err
+		return
 	}
 
-	_, err = os.orderItemService.DeleteOrderItemsByOrderId(orderId)
+	err = os.orderItemService.DeleteOrderItemsByOrderId(orderId)
 
-	if err != nil {
-		tx.Rollback()
-		return orderId, err
-	}
-	tx.Commit()
+	return
 
-	return orderId, err
 }

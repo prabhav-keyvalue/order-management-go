@@ -5,6 +5,6 @@ import (
 	"github.com/prabhav-keyvalue/order-management-go/dto"
 )
 
-func ValidateDto(dto *dto.Dto) gin.HandlerFunc {
-	return dto.Validate
+func ParseQueryParams(parser *dto.QueryParamParser) gin.HandlerFunc {
+	return parser.Parse
 }

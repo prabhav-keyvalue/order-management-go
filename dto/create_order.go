@@ -12,14 +12,14 @@ import (
 )
 
 type CreateOrderInputDto struct {
-	*Dto
-	CustomerId string      `json:"customerId"`
+	*Dto       `swaggerignore:"true"`
+	CustomerId string      `json:"customerId" example:"81ef33e4-280e-4371-b68a-0951c032442c"`
 	OrderItems []OrderItem `json:"orderItems"`
 }
 
 type OrderItem struct {
-	ProductId string `json:"productId"`
-	Quantity  int    `json:"quantity"`
+	ProductId string `json:"productId" example:"81ef33e4-280e-4371-b68a-0951c032442c"`
+	Quantity  int    `json:"quantity" example:"890"`
 }
 
 func NewCreateOrderInputDto() *CreateOrderInputDto {

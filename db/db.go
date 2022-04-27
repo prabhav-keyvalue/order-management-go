@@ -61,3 +61,7 @@ func newDb() (d *gorm.DB, err error) {
 func GetDB() *gorm.DB {
 	return db
 }
+
+func GetTX() *gorm.DB {
+	return db.Begin()
+}

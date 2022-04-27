@@ -13,7 +13,7 @@ type OrderItemService interface {
 	GetOrderItemsByOrderId(orderId string, tx *gorm.DB) ([]entity.OrderItem, error)
 	DeleteOrderItemsByIds(orderItemIds []string, tx *gorm.DB) error
 	UpdateOrderItemQuantity(orderItem entity.OrderItem, tx *gorm.DB) error
-	DeleteOrderItemsByOrderId(orderId string) (string, error)
+	DeleteOrderItemsByOrderId(orderId string, tx ...*gorm.DB) error
 }
 
 type OrderItemServiceImpl struct {
@@ -80,11 +80,12 @@ func (oit *OrderItemServiceImpl) UpdateOrderItemQuantity(orderItem entity.OrderI
 	return err
 }
 
-func (oit *OrderItemServiceImpl) DeleteOrderItemsByOrderId(orderId string) (string, error) {
-	err := oit.orderItemRepository.DeleteOrderItemsByOrderId(orderId)
+func (oit *OrderItemServiceImpl) DeleteOrderItemsByOrderId(orderId string, tx ...*gorm.DB) (err error) {
+
+	err = oit.orderItemRepository.DeleteOrderItemsByOrderId(orderId, tx...)
 
 	if err != nil {
 		logger.Errorf("Failed to delete order item | orderId: %v | Error: %v\n", orderId, err.Error())
 	}
-	return orderId, err
+	return
 }

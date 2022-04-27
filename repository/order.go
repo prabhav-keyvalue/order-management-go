@@ -2,9 +2,12 @@ package repository
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/prabhav-keyvalue/order-management-go/db"
+	"github.com/prabhav-keyvalue/order-management-go/dto"
 	"github.com/prabhav-keyvalue/order-management-go/entity"
+	"github.com/prabhav-keyvalue/order-management-go/model"
 	"gorm.io/gorm"
 )
 
@@ -12,7 +15,8 @@ type OrderRepository interface {
 	GetOrderById(id string) (entity.Order, error)
 	CreateOrder(orderInput entity.Order, tx *gorm.DB) (entity.Order, error)
 	EditOrder(editOrderInput entity.Order, tx *gorm.DB) (entity.Order, error)
-	DeleteOrder(orderId string) error
+	DeleteOrder(orderId string, tx ...*gorm.DB) error
+	GetOrders(orderFilterParams dto.OrderFilterParams, paginationInput dto.PaginationParams, sortOptions dto.SortOptions) ([]entity.Order, model.PageInfo, error)
 }
 
 type OrderRepositoryImpl struct {
@@ -25,19 +29,44 @@ func NewOrderRepository(db *gorm.DB) OrderRepository {
 	}
 }
 
+func applyOrderFilters(orderFilterParams dto.OrderFilterParams, qb *gorm.DB) *gorm.DB {
+	if f := orderFilterParams.MaxQuantity; f != "" {
+		if val, err := strconv.Atoi(f); err == nil {
+			qb = qb.Where("total_quantity <= ?", val)
+		}
+	}
+
+	if f := orderFilterParams.MinQuantity; f != "" {
+		if val, err := strconv.Atoi(f); err == nil {
+			qb = qb.Where("total_quantity >= ?", val)
+		}
+	}
+
+	return qb
+}
+
+func (or *OrderRepositoryImpl) GetOrders(orderFilterParams dto.OrderFilterParams, paginationInput dto.PaginationParams, sortOptions dto.SortOptions) ([]entity.Order, model.PageInfo, error) {
+	var orders []entity.Order
+	var count int64
+	qb := applyOrderFilters(orderFilterParams, or.DB)
+
+	qb = qb.Scopes(Paginate(paginationInput.Limit, paginationInput.Offset))
+	qb = qb.Order(fmt.Sprintf("%s %s", sortOptions.SortKey, sortOptions.SortOrder))
+
+	err := qb.Find(&orders).Offset(-1).Limit(-1).Count(&count).Error
+
+	pageInfo := model.PageInfo{
+		TotalCount: count,
+		Offset:     paginationInput.Offset,
+		Limit:      paginationInput.Limit,
+	}
+	return orders, pageInfo, err
+}
+
 func (or *OrderRepositoryImpl) GetOrderById(id string) (entity.Order, error) {
 	var order entity.Order
+	err := or.DB.Preload("OrderItems").Preload("Customer").Find(&order, "id = ?", id).Error
 
-	err := or.DB.Joins("inner join order_item on order_item.order_id = order.id").Where("order.id = id", id).Find(&order).Error
-
-	// var orderitems []entity.OrderItem
-	// err := or.DB.Table(db.GetTableNameWithSchema("order")).Where("id = ?", id).Scan(&order).Error
-	// err := or.DB.Find(&order, "id = ?", id).Error
-	// orderItemTableName := db.GetTableNameWithSchema("order_item")
-	// err := or.DB.Model(&order).Select("*").Where().Association("OrderItems").Find(&orderitems)
-	// err := or.DB.Table("order").Select("*").Where("id = ?", id).Scan(&order).Error
-	// err := or.DB.Raw("SELECT * FROM test.order o inner join test.order_item oi on oi.order_id = o.id where o.id = ? and o.deleted_at is null", id).Find(&order).Error
-	fmt.Println("sdfsdf", order)
 	return order, err
 }
 
@@ -55,6 +84,13 @@ func (or *OrderRepositoryImpl) EditOrder(editOrderInput entity.Order, tx *gorm.D
 	return editOrderInput, err
 }
 
-func (or *OrderRepositoryImpl) DeleteOrder(orderId string) error {
-	return or.DB.Table(db.GetTableNameWithSchema("order")).Where("id = ?", orderId).Delete(&entity.Order{}).Error
+func (or *OrderRepositoryImpl) DeleteOrder(orderId string, tx ...*gorm.DB) error {
+	var db *gorm.DB
+
+	if len(tx) > 0 {
+		db = tx[0]
+	} else {
+		db = or.DB
+	}
+	return db.Delete(&entity.Order{}, "id = ?", orderId).Error
 }

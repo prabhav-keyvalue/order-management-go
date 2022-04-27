@@ -11,7 +11,7 @@ type OrderItemRepository interface {
 	GetOrderItemsByOrderId(orderId string, tx *gorm.DB) ([]entity.OrderItem, error)
 	DeleteOrderItemsByIds(orderItemIds []string, tx *gorm.DB) error
 	UpdateOrderItemQuantity(orderItem entity.OrderItem, tx *gorm.DB) error
-	DeleteOrderItemsByOrderId(orderId string) error
+	DeleteOrderItemsByOrderId(orderId string, tx ...*gorm.DB) error
 }
 
 type OrderItemRepositoryImpl struct {
@@ -44,8 +44,16 @@ func (oit *OrderItemRepositoryImpl) DeleteOrderItemsByIds(orderItemIds []string,
 	return err
 }
 
-func (oit *OrderItemRepositoryImpl) DeleteOrderItemsByOrderId(orderId string) error {
-	return oit.dB.Table(db.GetTableNameWithSchema("order_item")).Where("order_id = ?", orderId).Delete(&entity.OrderItem{}).Error
+func (oit *OrderItemRepositoryImpl) DeleteOrderItemsByOrderId(orderId string, tx ...*gorm.DB) error {
+	var db *gorm.DB
+
+	if len(tx) > 0 {
+		db = tx[0]
+	} else {
+		db = oit.dB
+	}
+
+	return db.Delete(&entity.OrderItem{}, "order_id = ?", orderId).Error
 }
 
 func (oit *OrderItemRepositoryImpl) UpdateOrderItemQuantity(orderItem entity.OrderItem, tx *gorm.DB) error {
